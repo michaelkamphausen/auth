@@ -1,6 +1,6 @@
 {
   "name": "@localfirst/auth-provider-automerge-repo",
-  "version": "5.4.1",
+  "version": "5.5.1",
   "description": "Authentication provider for automerge-repo using localfirst/auth",
   "repository": "https://github.com/local-first-web/auth/packages/auth-provider-automerge-repo",
   "license": "MIT",
@@ -21,16 +21,16 @@
     "test:log": "cross-env DEBUG='localfirst*' DEBUG_COLORS=1 vitest --reporter basic"
   },
   "dependencies": {
-    "@automerge/automerge-repo": "v1.1.0-alpha.13",
+    "@automerge/automerge-repo": "^1.1.2",
+    "@herbcaudill/eventemitter42": "^0.2.1",
     "@localfirst/auth": "workspace:*",
     "@localfirst/crypto": "workspace:*",
     "@localfirst/shared": "workspace:*",
-    "eventemitter3": "^5.0.1",
     "msgpackr": "^1.10.0"
   },
   "devDependencies": {
-    "@automerge/automerge-repo-network-messagechannel": "v1.1.0-alpha.13",
-    "@automerge/automerge-repo-storage-nodefs": "v1.1.0-alpha.13",
+    "@automerge/automerge-repo-network-messagechannel": "^1.1.2",
+    "@automerge/automerge-repo-storage-nodefs": "^1.1.2",
     "rimraf": "^5.0.5"
   },
   "gitHead": "9a7b871e9e34268b32cc6e574189ec2350787b81"
