@@ -192,8 +192,8 @@ importers:
         specifier: ^0.2.3
         version: 0.2.3(esbuild@0.19.12)
       '@herbcaudill/eventemitter42':
-        specifier: ^0.2.1
-        version: 0.2.1
+        specifier: ^0.3.1
+        version: 0.3.1
       '@ibm/plex':
         specifier: ^6.3.0
         version: 6.4.0
@@ -301,8 +301,8 @@ importers:
   packages/auth:
     dependencies:
       '@herbcaudill/eventemitter42':
-        specifier: ^0.2.1
-        version: 0.2.1
+        specifier: ^0.3.1
+        version: 0.3.1
       '@localfirst/crdx':
         specifier: workspace:*
         version: link:../crdx
@@ -322,8 +322,8 @@ importers:
         specifier: ^1.10.0
         version: 1.10.1
       xstate:
-        specifier: ^4.38.3
-        version: 4.38.3
+        specifier: ^5.9.1
+        version: 5.9.1
 
   packages/auth-provider-automerge-repo:
     dependencies:
@@ -331,8 +331,8 @@ importers:
         specifier: ^1.1.2
         version: 1.1.2(@types/node@18.19.21)(typescript@5.3.3)
       '@herbcaudill/eventemitter42':
-        specifier: ^0.2.1
-        version: 0.2.1
+        specifier: ^0.3.1
+        version: 0.3.1
       '@localfirst/auth':
         specifier: workspace:*
         version: link:../auth
@@ -392,6 +392,9 @@ importers:
         specifier: ^8.14.2
         version: 8.16.0
     devDependencies:
+      '@localfirst/crypto':
+        specifier: workspace:*
+        version: link:../crypto
       portfinder:
         specifier: ^1.0.32
         version: 1.0.32
@@ -402,8 +405,8 @@ importers:
   packages/crdx:
     dependencies:
       '@herbcaudill/eventemitter42':
-        specifier: ^0.2.1
-        version: 0.2.1
+        specifier: ^0.3.1
+        version: 0.3.1
       '@localfirst/crypto':
         specifier: workspace:*
         version: link:../crypto
@@ -447,14 +450,17 @@ importers:
   packages/shared:
     dependencies:
       '@herbcaudill/eventemitter42':
-        specifier: ^0.2.1
-        version: 0.2.1
+        specifier: ^0.3.1
+        version: 0.3.1
       cd:
         specifier: ^0.3.3
         version: 0.3.3
       debug:
         specifier: ^4.3.4
         version: 4.3.4(supports-color@8.1.1)
+      eventemitter3:
+        specifier: ^5.0.1
+        version: 5.0.1
       lodash-es:
         specifier: ^4.17.21
         version: 4.17.21
@@ -1395,10 +1401,10 @@ packages:
       }
     dev: true
 
-  /@herbcaudill/eventemitter42@0.2.1:
+  /@herbcaudill/eventemitter42@0.3.1:
     resolution:
       {
-        integrity: sha512-BKibbOeJZ7Bp7Yq84tZy6iqy2+5fWvBtDXjPK+kiPL4c4qgXe1dF3dCF/eo5QwgXcXpanGDU33Suf0xZUek0qg==,
+        integrity: sha512-GTe0EupM4v+0Iet2UmFz5ZsPz8MZm/FbYx1yTJ9OyeVbCe5etkEKA2pntuFAjamp08c8Sh2p+QcM5AGMWi3sdA==,
       }
     dev: false
 
@@ -16732,6 +16738,13 @@ packages:
       {
         integrity: sha512-SH7nAaaPQx57dx6qvfcIgqKRXIh4L0A1iYEqim4s1u7c9VoCgzZc+63FY90AKU4ZzOC2cfJzTnpO4zK7fCUzzw==,
       }
+
+  /xstate@5.9.1:
+    resolution:
+      {
+        integrity: sha512-85edx7iMqRJSRlEPevDwc98EWDYUlT5zEQ54AXuRVR+G76gFbcVTAUdtAeqOVxy8zYnUr9FBB5114iK6enljjw==,
+      }
+    dev: false
 
   /xtend@4.0.2:
     resolution:
