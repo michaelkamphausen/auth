@@ -3,14 +3,16 @@ import type {
   Message,
   NetworkAdapter,
   PeerId,
-  StorageAdapter,
+  StorageAdapterInterface,
 } from '@automerge/automerge-repo'
+import { EventEmitter } from '@herbcaudill/eventemitter42'
 import * as Auth from '@localfirst/auth'
-import { debug, memoize, pause } from '@localfirst/shared'
 import { hash } from '@localfirst/crypto'
+import { debug, memoize, pause } from '@localfirst/shared'
 import { type AbstractConnection } from 'AbstractConnection.js'
 import { AnonymousConnection } from 'AnonymousConnection.js'
-import { EventEmitter } from '@herbcaudill/eventemitter42'
+import { buildServerUrl } from 'buildServerUrl.js'
+import { getShareId } from 'getShareId.js'
 import { pack, unpack } from 'msgpackr'
 import { isJoinMessage, type JoinMessage } from 'types.js'
 import { AuthenticatedNetworkAdapter as AuthNetworkAdapter } from './AuthenticatedNetworkAdapter.js'
@@ -26,9 +28,9 @@ import type {
   ShareId,
 } from './types.js'
 import { isAuthMessage, isDeviceInvitation, isPrivateShare } from './types.js'
-import { getShareId } from 'getShareId.js'
 
 const { encryptBytes, decryptBytes } = Auth.symmetric
+const log = debug.extend('auth-provider')
 
 /**
  * This class is used to wrap automerge-repo network adapters so that they authenticate peers and
@@ -38,26 +40,31 @@ const { encryptBytes, decryptBytes } = Auth.symmetric
  *
  * 1. Create a AuthProvider, using the same storage adapter that the repo will use:
  *
- *    ```ts
- *    const storage = new SomeStorageAdapter()
- *    const auth = new AuthProvider({ user, device, storage })
- *    ```
+ * ```ts
+ * const storage = new SomeStorageAdapter()
+ * const auth = new AuthProvider({ user, device, storage })
+ * ```
+ *
  * 2. Wrap your network adapter(s) with its `wrap` method.
- *    ```ts
- *   const adapter = new SomeNetworkAdapter()
- *   const authenticatedAdapter = auth.wrap(adapter)
- *   ```
+ *
+ *  ```ts
+ * const adapter = new SomeNetworkAdapter()
+ * const authenticatedAdapter = auth.wrap(adapter)
+ * ```
+ *
  * 3. Pass the wrapped adapters to the repo.
- *   ```ts
- *  const repo = new Repo({
- *    storage,
- *    network: [authenticatedAdapter],
- *  })
+ *
+ *  ```ts
+ * const repo = new Repo({
+ *   storage,
+ *   network: [authenticatedAdapter],
+ * })
+ * ```
  */
 export class AuthProvider extends EventEmitter<AuthProviderEvents> {
   readonly #device: Auth.DeviceWithSecrets
   #user?: Auth.UserWithSecrets
-  readonly storage: StorageAdapter
+  readonly storage: StorageAdapterInterface
 
   readonly #adapters: Array<AuthNetworkAdapter<NetworkAdapter>> = []
   readonly #invitations = new Map<ShareId, Invitation>()
@@ -68,7 +75,7 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
   readonly #server: string[]
   readonly #peerShareIdHashes = new Map<PeerId, Set<Auth.Base58>>()
 
-  #log = debug.extend('auth-provider')
+  #log = log
 
   constructor({ device, user, storage, server = [] }: Config) {
     super()
@@ -79,7 +86,7 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
     // We might already have our user info, unless we're a new device using an invitation
     if (user?.userName) {
       this.#user = user
-      this.#log = this.#log.extend(user.userName)
+      this.#log = log.extend(user.userName)
     }
 
     this.#log('instantiating %o', {
@@ -99,8 +106,12 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
   }
 
   /**
-   * Intercept the network adapter's events. For each new peer, we create a localfirst/auth
-   * connection and use it to mutually authenticate before forwarding the peer-candidate event.
+   * This provider works by wrapping an automerge-repo network adapter. The wrapped adapter is
+   * passed to the `Repo`, and it intercepts the base adapter's events and messages, authenticating
+   * peers and encrypting traffic.
+   *
+   * For each new peer, we create a localfirst/auth connection and use it to mutually authenticate
+   * before forwarding the peer-candidate event.
    */
   public wrap = (baseAdapter: NetworkAdapter) => {
     // All repo messages for this adapter are handled by the Auth.Connection, which encrypts them
@@ -211,23 +222,25 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
 
   /**
    * Registers an existing team with all of our sync servers.
+   *
+   * The application only needs to call this if the team was created outside of this provider; if
+   * the team was created with `createTeam`, it's already registered.
    */
   public async registerTeam(team: Auth.Team) {
     await this.addTeam(team)
 
-    const registrations = this.#server.map(async url => {
-      // url could be "localhost:3000" or "syncserver.example.com"
-      const host = url.split(':')[0] // omit port
+    const registrations = this.#server.map(async server => {
+      const { origin, hostname } = buildServerUrl(server)
 
       // get the server's public keys
-      const response = await fetch(`http://${url}/keys`)
+      const response = await fetch(`${origin}/keys`)
       const keys = await response.json()
 
       // add the server's public keys to the team
-      team.addServer({ host, keys })
+      team.addServer({ host: hostname, keys })
 
       // register the team with the server
-      await fetch(`http://${url}/teams`, {
+      await fetch(`${origin}/teams`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -242,7 +255,7 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
   /**
    * Creates a private share for a team we're already a member of.
    */
-  public async addTeam(team: Auth.Team) {
+  public async addTeam(team: Auth.Team, teamKeyring = team.teamKeyring()) {
     const shareId = getShareId(team)
 
     if (this.hasTeam(shareId)) {
@@ -256,6 +269,7 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
       shareId,
       team,
       documentIds: new Set(),
+      teamKeyring,
     })
 
     // persist our state now and whenever the team changes
@@ -289,6 +303,21 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
    */
   public async addInvitation(invitation: Invitation) {
     const { shareId } = invitation
+
+    // If none of our peers has this shareId, we can't join now. If we're connected to a sync
+    // server, this probably means the invitation code is invalid. In a purely peer-to-peer scenario
+    // with no sync servers or other always-on peers, this could mean that no one on this team is
+    // currently online and we need to try again later.
+    const shareExists = () => this.#peersByShareId(shareId).length > 0
+    if (!shareExists()) {
+      // wait a moment and try again (helpful in tests where everything is being spun up at once)
+      await pause(100)
+      if (!shareExists()) {
+        console.log('throwing invalid invitation code error')
+        throw new AuthError('INVALID_INVITATION_CODE')
+      }
+    }
+
     this.#invitations.set(shareId, invitation)
     await this.#createConnectionsForShare(shareId)
   }
@@ -307,8 +336,10 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
    * Registers a share with all of our sync servers.
    */
   public async registerPublicShare(shareId: ShareId) {
-    const registrations = this.#server.map(async url => {
-      await fetch(`http://${url}/public-shares`, {
+    const registrations = this.#server.map(async server => {
+      const { origin } = buildServerUrl(server)
+
+      await fetch(`${origin}/public-shares`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ shareId }),
@@ -439,16 +470,16 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
     this.#connections.set([shareId, peerId], connection)
 
     connection
-      .on('joined', async ({ team, user }) => {
+      .on('joined', async ({ team, user, teamKeyring }) => {
         // When we successfully join a team, the connection gives us the team graph and the user's
         // info (including keys).
 
         // When we're joining as a new device for an existing user, this is how we get the user's id and keys.
         this.#user = user
-        this.#log = this.#log.extend(user.userName)
+        this.#log = log.extend(user.userName)
 
-        // Create a share with this team
-        await this.addTeam(team)
+        // Create a share with this team and the full team keys
+        await this.addTeam(team, teamKeyring)
 
         // remove the used invitation as we no longer need it & don't want to present it to others
         this.#invitations.delete(shareId)
@@ -550,7 +581,7 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
    */
   #receiveJoinMessage(authAdapter: AuthNetworkAdapter<NetworkAdapter>, message: JoinMessage) {
     this.#log('received join message %o', message)
-    const { senderId, shareIdHashes: hashedShareIds } = message
+    const { senderId, shareIdHashes } = message
 
     // make a map of hashed shareIds to our shareIds
     const ourHashes = new Map(
@@ -560,11 +591,11 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
     )
 
     const theirHashes = this.#peerShareIdHashes.get(senderId)! // this is created when we first see a peer
-    for (const hash of hashedShareIds) {
+    for (const hash of shareIdHashes) {
       theirHashes.add(hash)
       const shareId = ourHashes.get(hash)
-
       if (shareId) {
+        this.emit('peer-joined', { shareId, peerId: senderId })
         void this.#maybeCreateConnection({ shareId, peerId: senderId, authAdapter })
       }
     }
@@ -596,7 +627,6 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
   #removeConnection(shareId: ShareId, peerId: PeerId) {
     const connection = this.#connections.get([shareId, peerId])
     if (connection && connection.state !== 'disconnected') {
-      connection.stop()
       this.#connections.delete([shareId, peerId])
     }
   }
@@ -611,7 +641,10 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
         ? ({
             shareId,
             encryptedTeam: share.team.save(),
-            encryptedTeamKeys: encryptBytes(share.team.teamKeyring(), this.#device.keys.secretKey),
+            encryptedTeamKeys: encryptBytes(
+              { ...share.teamKeyring, ...share.team.teamKeyring() },
+              this.#device.keys.secretKey
+            ),
             documentIds,
           } as SerializedShare)
         : { shareId, documentIds }
@@ -652,6 +685,15 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
 
   #allShareIds() {
     return [...this.#shares.keys(), ...this.#invitations.keys()]
+  }
+
+  #peersByShareId(shareId: ShareId) {
+    const hash = hashShareId(shareId)
+    const peers: PeerId[] = []
+    for (const [peerId, hashes] of this.#peerShareIdHashes) {
+      if (hashes.has(hash)) peers.push(peerId)
+    }
+    return peers
   }
 
   #getContextForShare(shareId: ShareId) {
@@ -754,13 +796,29 @@ type Config = {
   user?: Auth.UserWithSecrets
 
   /** We need to be given some way to persist our state */
-  storage: StorageAdapter
+  storage: StorageAdapterInterface
 
   /**
    * If we're using one or more sync servers, we provide their hostnames. The hostname should
-   * include the domain, as well as the port (if any). It should not include the protocol (e.g.
-   * `https://` or `ws://`) or any path (e.g. `/sync`). For example, `localhost:3000` or
-   * `syncserver.mydomain.com`.
+   * include the domain, as well as the port (if any). If you don't include a protocol, we'll
+   * assume you want to use http. Any path (e.g. `/sync`) will be ignored.
+   * For example, `localhost:3000` or `https://syncserver.mydomain.com`.
    */
   server?: string | string[]
 }
+
+export class AuthError extends Error {
+  name: AuthErrorType
+  constructor(type: AuthErrorType) {
+    const message = AuthErrorMessage[type]
+    super(`Authentication error: ${message}`)
+    this.name = type
+  }
+}
+
+export const AuthErrorMessage = {
+  INVALID_INVITATION_CODE: 'Invalid invitation code',
+  ENCRYPTION_FAILURE: 'Encryption failure',
+}
+
+export type AuthErrorType = keyof typeof AuthErrorMessage

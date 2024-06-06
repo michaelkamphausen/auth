@@ -9,7 +9,7 @@ describe('Team', () => {
   describe('createTeam', () => {
     it('returns a new team', () => {
       const user = createUser('alice')
-      const device = createDevice(user.userId, 'laptop')
+      const device = createDevice({ userId: user.userId, deviceName: 'laptop' })
       const team = createTeam('Spies Я Us', { user, device })
       expect(team.teamName).toBe('Spies Я Us')
       expect(team.id).toBeDefined()
@@ -17,7 +17,7 @@ describe('Team', () => {
 
     it(`doesn't allow creating a team where the device's userId doesn't match the user's`, () => {
       const user = createUser('alice')
-      const device = createDevice('alice', 'laptop') // <- should be alice.userId instead of 'alice'
+      const device = createDevice({ userId: 'alice', deviceName: 'laptop' }) // <- should be alice.userId instead of 'alice'
       expect(() => createTeam('Spies Я Us', { user, device })).toThrow()
     })
 
@@ -56,6 +56,17 @@ describe('Team', () => {
       const { alice } = setup('alice')
       alice.team.setTeamName(`Sgt. Pepper's Lonely Hearts Club Band`)
       expect(alice.team.teamName).toBe(`Sgt. Pepper's Lonely Hearts Club Band`)
+    })
+
+    it('the team preserves device metadata if provided', () => {
+      const user = createUser('alice')
+      const device = createDevice({
+        userId: user.userId,
+        deviceName: 'laptop',
+        deviceInfo: { foo: 'bar' },
+      })
+      const team = createTeam('Spies Я Us', { user, device })
+      expect(team.device(device.deviceId).deviceInfo.foo).toBe('bar')
     })
   })
 })

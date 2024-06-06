@@ -3,13 +3,13 @@ import { MessageChannelNetworkAdapter } from '@automerge/automerge-repo-network-
 import { NodeFSStorageAdapter } from '@automerge/automerge-repo-storage-nodefs'
 import * as Auth from '@localfirst/auth'
 import { eventPromise } from '@localfirst/shared'
+import { getShareId } from 'getShareId.js'
 import { type ShareId } from 'types.js'
 import { describe, expect, it } from 'vitest'
 import { AuthProvider } from '../AuthProvider.js'
 import { authenticated, authenticatedInTime } from './helpers/authenticated.js'
 import { getStorageDirectory, setup, type UserStuff } from './helpers/setup.js'
 import { synced } from './helpers/synced.js'
-import { getShareId } from 'getShareId.js'
 
 describe('auth provider for automerge-repo', () => {
   it('does not authenticate users that do not belong to any teams', async () => {
@@ -95,7 +95,7 @@ describe('auth provider for automerge-repo', () => {
     const alice = Auth.createUser('alice')
 
     const laptopStorage = new NodeFSStorageAdapter(getStorageDirectory('alice-laptop'))
-    const laptop = Auth.createDevice(alice.userId, "Alice's laptop")
+    const laptop = Auth.createDevice({ userId: alice.userId, deviceName: "Alice's laptop" })
     const laptopContext = { user: alice, device: laptop }
     const laptopAuth = new AuthProvider({ ...laptopContext, storage: laptopStorage })
 
@@ -109,7 +109,7 @@ describe('auth provider for automerge-repo', () => {
 
     // TODO: we're using userName instead of userId, because in the real world we don't know our userId yet.
     // We probably need to update the userId once we know it.
-    const phone = Auth.createDevice(alice.userName, "Alice's phone")
+    const phone = Auth.createDevice({ userId: alice.userName, deviceName: "Alice's phone" })
     const phoneContext = { userName: alice.userName, device: phone }
     const phoneAuth = new AuthProvider({ ...phoneContext, storage: phoneStorage })
 
@@ -160,9 +160,13 @@ describe('auth provider for automerge-repo', () => {
       invitationSeed: 'passw0rd',
     })
 
-    // grrr foiled again
-    const authWorked = await authenticatedInTime(alice, eve)
-    expect(authWorked).toBe(false) // ✅
+    // alice learns that eve should kick rocks
+    const { message: aliceMessage } = await eventPromise(alice.authProvider, 'localError')
+    expect(aliceMessage).toBe("The peer's invitation wasn't accepted")
+
+    // eve gets told to kick rocks
+    const { message: eveMessage } = await eventPromise(eve.authProvider, 'remoteError')
+    expect(eveMessage).toBe("Your invitation wasn't accepted")
 
     teardown()
   })
@@ -256,14 +260,30 @@ describe('auth provider for automerge-repo', () => {
     teardown()
   })
 
-  it('persists local context and team state', async () => {
+  it('persists local context and team state (including the complete keyring)', async () => {
     const {
-      users: { alice, bob },
+      users: { alice, bob, charlie },
       teardown,
-    } = setup(['alice', 'bob'])
+    } = setup(['alice', 'bob', 'charlie'])
 
     const aliceTeam = Auth.createTeam('team A', alice.context)
     await alice.authProvider.addTeam(aliceTeam)
+
+    // Alice sends Charlie an invitation
+    const { seed: charlieInvite } = aliceTeam.inviteMember()
+
+    // Charlie uses the invitation to join
+    await charlie.authProvider.addInvitation({
+      shareId: getShareId(aliceTeam),
+      invitationSeed: charlieInvite,
+    })
+
+    // they're able to authenticate and sync
+    await authenticated(alice, charlie)
+    await synced(alice, charlie) // ✅
+
+    // Alice boots charlie
+    aliceTeam.remove(charlie.user.userId)
 
     // Alice sends Bob an invitation
     const { seed: bobInvite } = aliceTeam.inviteMember()
@@ -335,6 +355,7 @@ describe('auth provider for automerge-repo', () => {
     }
     teardown()
   })
+
   it('allows peers to connect without authenticating via a public share', async () => {
     const {
       users: { alice, bob },

@@ -34,6 +34,7 @@ export type PublicShare = {
 export type PrivateShare = PublicShare & {
   /** The team that is used for enforcing authenticated access to this share */
   team: Auth.Team
+  teamKeyring: Auth.Keyring
 }
 
 export const isPrivateShare = (share: Share): share is PrivateShare =>
@@ -139,6 +140,11 @@ export type AuthProviderEvents = {
    * We're connected to a peer and have been mutually authenticated.
    */
   connected: (payload: { shareId: ShareId; peerId: PeerId }) => void
+
+  /**
+   * A peer has let us know that they are interested in a shareId.
+   */
+  'peer-joined': (payload: { shareId: ShareId; peerId: PeerId }) => void
 
   /**
    * We've detected an error locally, e.g. a peer tries to join with an invalid invitation.
