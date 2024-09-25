@@ -1,5 +1,5 @@
-import { Keyset } from '@localfirst/crdx'
-import { Lockbox } from 'lockbox/index.js'
+import { type Keyset } from '@localfirst/crdx'
+import { type Lockbox } from 'lockbox/index.js'
 import * as select from 'team/selectors/index.js'
 import { type Member, type Transform } from 'team/types.js'
 import { KeyType } from 'util/types.js'
@@ -12,24 +12,19 @@ export const removeDevice =
     const member = select.memberByDeviceId(state, deviceId)
     const { userId } = member
     let { keys } = member
-    const userLockbox = lockboxes.find(({ contents }) =>
-      contents.type == KeyType.USER && contents.name == userId 
+    const userLockbox = lockboxes.find(
+      ({ contents }) => contents.type === KeyType.USER && contents.name === userId
     )
 
-    // When a device is removed, the user keys are rotated and the new key 
+    // When a device is removed, the user keys are rotated and the new key
     // generation is in the lockboxes. The unencrypted lockbox contents
     // contain the meta data along with the public keys which is all we need
     // to update the user keys of the member to the latest generation.
     if (userLockbox) {
-      const { 
-        type, 
-        name, 
-        generation, 
-        encryption, 
-        signature
-      } = userLockbox.contents as unknown as Keyset
+      const { type, name, generation, encryption, signature } =
+        userLockbox.contents as unknown as Keyset
 
-      if (keys.generation < generation && !!encryption && !!signature) {
+      if (keys.generation < generation && encryption !== undefined && signature !== undefined) {
         keys = { type, name, generation, encryption, signature }
       }
     }
