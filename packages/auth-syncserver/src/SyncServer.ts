@@ -69,7 +69,12 @@ export class LocalFirstAuthSyncServer {
     } = {}
   ) {
     return new Promise<void>(resolve => {
-      const { port = 3000, storageDir = 'automerge-repo-data', silent = false, useHttps = false } = options
+      const {
+        port = 3000,
+        storageDir = 'automerge-repo-data',
+        silent = false,
+        useHttps = false,
+      } = options
       this.storageDir = storageDir
 
       if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir)
@@ -178,22 +183,22 @@ export class LocalFirstAuthSyncServer {
         .use(errorHandler)
 
       this.server.listen(port, () => {
-          if (!silent) {
-            const hostExt = this.host + (port ? `:${port}` : '')
-            const wsUrl = `${isDev ? 'ws' : 'wss'}://${hostExt}`
-            const httpUrl = `${isDev ? 'http' : 'https'}://${hostExt}`
-            console.log(
-              [
-                ``,
-                `${chalk.yellow(confirmation)}`,
-                `  ${chalk.green('➜')}  ${chalk.cyan(wsUrl)}`,
-                `  ${chalk.green('➜')}  ${chalk.cyan(httpUrl)}`,
-                ``,
-              ].join('\n')
-            )
-          }
-          resolve()
-        })
+        if (!silent) {
+          const hostExt = this.host + (port ? `:${port}` : '')
+          const wsUrl = `${isDev ? 'ws' : 'wss'}://${hostExt}`
+          const httpUrl = `${isDev ? 'http' : 'https'}://${hostExt}`
+          console.log(
+            [
+              ``,
+              `${chalk.yellow(confirmation)}`,
+              `  ${chalk.green('➜')}  ${chalk.cyan(wsUrl)}`,
+              `  ${chalk.green('➜')}  ${chalk.cyan(httpUrl)}`,
+              ``,
+            ].join('\n')
+          )
+        }
+        resolve()
+      })
 
       /**
        * When we successfully upgrade the client to a WebSocket connection, we emit a "connection"
