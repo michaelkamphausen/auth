@@ -1,6 +1,6 @@
 /* eslint-disable object-shorthand */
 import { EventEmitter } from '@herbcaudill/eventemitter42'
-import type { DecryptFnParams, KeysetWithSecrets } from '@localfirst/crdx'
+import type { DecryptFnParams } from '@localfirst/crdx'
 import {
   generateMessage,
   headsAreEqual,
@@ -223,16 +223,6 @@ export class Connection extends EventEmitter<ConnectionEvents> {
               ? getDeviceUserFromGraph({ serializedGraph, teamKeyring, invitationSeed })
               : { user: context.user, userKeyring: undefined }
 
-          // If we're joining as a new device for an existing member, we won't have a user object
-          // and all generations of existing user keys yet, so we need to get those from the graph. 
-          // We use the invitation seed to generate the starter keys for the new device. We can use 
-          // these to unlock the lockboxes on the team graph that contain our user keys.
-          if (!user) {
-            const userWithKeys = getDeviceUserFromGraph({ serializedGraph, teamKeyring, invitationSeed })
-            user = userWithKeys.user
-            allUserKeys = userWithKeys.allUserKeys
-          }
-          
           // When admitting us, our peer added our user to the team graph. We've been given the
           // serialized and encrypted graph, and the team keyring. We can now decrypt the graph and
           // reconstruct the team in order to join it.
