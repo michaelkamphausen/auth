@@ -27,7 +27,7 @@ export const initializeAuthRepo = async ({ user, device }: Params) => {
 
   await Promise.all([
     eventPromise(auth, 'ready'), // auth provider has loaded any persisted state
-    eventPromise(repo.networkSubsystem, 'ready'), // repo has a working network connection
+    repo.networkSubsystem.whenReady(), // repo has a working network connection
   ])
 
   return { auth, repo }

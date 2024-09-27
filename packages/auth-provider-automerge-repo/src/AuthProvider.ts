@@ -441,9 +441,13 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
     const { baseAdapter } = authAdapter
 
     // wait until the adapter is ready
-    await new Promise<void>(resolve => {
-      if (authAdapter.isReady) resolve()
-      else baseAdapter.once('ready', () => resolve())
+    await new Promise<void>((resolve, reject) => {
+      if (authAdapter.isReady()) resolve()
+      else
+        baseAdapter
+          .whenReady()
+          .then(() => resolve())
+          .catch(() => reject())
     })
     this.#log('creating connection %o', { shareId, peerId })
 
