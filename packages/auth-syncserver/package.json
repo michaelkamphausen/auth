@@ -1,6 +1,6 @@
 {
   "name": "@localfirst/auth-syncserver",
-  "version": "6.0.0-alpha.6",
+  "version": "6.0.0",
   "description": "Sync server for automerge-repo using localfirst/auth",
   "repository": "https://github.com/local-first-web/auth/packages/auth-syncserver",
   "license": "MIT",
@@ -21,9 +21,9 @@
     "test:log": "cross-env DEBUG='localfirst*' DEBUG_COLORS=1 vitest --reporter basic"
   },
   "dependencies": {
-    "@automerge/automerge-repo": "^1.1.2",
-    "@automerge/automerge-repo-network-websocket": "^1.1.2",
-    "@automerge/automerge-repo-storage-nodefs": "^1.1.2",
+    "@automerge/automerge-repo": "^1.2.1",
+    "@automerge/automerge-repo-network-websocket": "^1.2.1",
+    "@automerge/automerge-repo-storage-nodefs": "^1.2.1",
     "@localfirst/auth": "workspace:*",
     "@localfirst/auth-provider-automerge-repo": "workspace:*",
     "@localfirst/shared": "workspace:*",
