@@ -41,7 +41,6 @@ const running = fs.readFileSync(path.join(_dirname, 'running.html'), 'utf8')
  * authenticate with the server.
  */
 export class LocalFirstAuthSyncServer {
-  webSocketServer: WebSocketServer
   server: HttpServer | HttpsServer
   storageDir: string
   publicKeys: Keyset
@@ -83,31 +82,55 @@ export class LocalFirstAuthSyncServer {
       const keys = this.#getKeys()
       this.publicKeys = redactKeys(keys)
 
-      // localfirst/auth will use this to send and receive authentication messages, and Automerge Repo will use it to send and receive sync messages
-      this.webSocketServer = new WebSocketServer({ noServer: true })
-
-      this.webSocketServer.on('close', (payload: any) => {
-        this.close(payload)
-      })
-
       // Set up the auth provider
       const server: ServerWithSecrets = { host: this.host, keys }
       const user = castServer.toUser(server)
       const device = castServer.toDevice(server)
-      const storage = new NodeFSStorageAdapter(storageDir)
-      const auth = new AuthProvider({ user, device, storage })
 
-      // Set up the repo
-      const adapter = new NodeWSServerAdapter(this.webSocketServer)
-      const _repo = new Repo({
-        // Use the auth provider to wrap our network adapter
-        network: [auth.wrap(adapter)],
-        // Use the same storage that the auth provider uses
-        storage,
-        // Since this is a server, we don't share generously — meaning we only sync documents they
-        // already know about and can ask for by ID.
-        sharePolicy: async _peerId => false,
-      })
+      const createOrg = (id: string) => {
+        // localfirst/auth will use this to send and receive authentication messages, and Automerge Repo will use it to send and receive sync messages
+        const webSocketServer = new WebSocketServer({ noServer: true })
+        webSocketServer.on('close', (payload: any) => {
+          this.close(payload)
+        })
+
+        const adapter = new NodeWSServerAdapter(webSocketServer)
+        const storage = new NodeFSStorageAdapter(`${storageDir}/${id}`)
+        const auth = new AuthProvider({ user, device, storage })
+
+        // Set up the repo
+        const repo = new Repo({
+          // Use the auth provider to wrap our network adapter
+          network: [auth.wrap(adapter)],
+          // Use the same storage that the auth provider uses
+          storage,
+          // Since this is a server, we don't share generously — meaning we only sync documents they
+          // already know about and can ask for by ID.
+          sharePolicy: async _peerId => false,
+        })
+        return { storage, auth, repo, webSocketServer }
+      }
+
+      const toShareId = (id: string) => id.slice(0, 12) as ShareId
+      const organizationIds = fs
+        .readdirSync(storageDir, { withFileTypes: true })
+        .filter(dirent => dirent.isDirectory())
+        .map(dirent => dirent.name)
+
+      const organizationIdMap = organizationIds.reduce<
+        Record<
+          ShareId,
+          {
+            storage: NodeFSStorageAdapter
+            auth: AuthProvider
+            repo: Repo
+            webSocketServer: WebSocketServer
+          }
+        >
+      >((orgMap, id) => {
+        orgMap[toShareId(id)] = createOrg(id)
+        return orgMap
+      }, {})
 
       // Set up the server
       const confirmation = `🤖 Sync server for Automerge Repo + @localfirst/auth running`
@@ -130,7 +153,7 @@ export class LocalFirstAuthSyncServer {
 
       app
         // parse application/json
-        .use(bodyParser.json({ limit: "100mb" }))
+        .use(bodyParser.json({ limit: '100mb' }))
 
         // enable CORS
         // TODO: allow providing custom CORS config
@@ -142,13 +165,38 @@ export class LocalFirstAuthSyncServer {
         })
 
         /** Endpoint to request the server's public keys. */
-        .get('/keys', (req, res) => {
+        .get('/:org?/keys', (req, res) => {
           this.log('GET /keys %o', req.body)
           res.send(this.publicKeys)
         })
 
+        /** Endpoint to register an organization, which is actually a team
+         * and also a collection of teams, shares and documents belonging
+         * to that organization. */
+        .post('/organizations', async (req, res) => {
+          this.log('POST /organizations %o', req.body)
+          const { serializedGraph, teamKeyring } = req.body as {
+            serializedGraph: Uint8Array
+            teamKeyring: Keyring
+          }
+
+          // rehydrate the team using the serialized graph and the keys passed in the request
+          const team = new Team({
+            source: objectToUint8Array(serializedGraph),
+            context: { server },
+            teamKeyring,
+          })
+
+          const shareId = getShareId(team)
+          const organization = createOrg(shareId)
+          organizationIdMap[shareId] = organization
+          await organization.auth.addTeam(team)
+
+          res.end()
+        })
+
         /** Endpoint to register a team. */
-        .post('/teams', async (req, res) => {
+        .post('/:org/teams', async (req, res) => {
           this.log('POST /teams %o', req.body)
           const { serializedGraph, teamKeyring } = req.body as {
             serializedGraph: Uint8Array
@@ -162,6 +210,13 @@ export class LocalFirstAuthSyncServer {
             teamKeyring,
           })
 
+          const orgId = req.params.org
+          const { auth } = organizationIdMap[toShareId(orgId)] ?? {}
+
+          if (!auth) {
+            res.status(500).send(`Organization ${orgId} does not exist`)
+          }
+
           if (auth.hasTeam(getShareId(team))) {
             res.status(500).send(`Team ${team.id} already registered`)
           }
@@ -171,8 +226,16 @@ export class LocalFirstAuthSyncServer {
           res.end()
         })
 
-        .post('/public-shares', async (req, res) => {
+        .post('/:org/public-shares', async (req, res) => {
           this.log('POST /public-shares %o', req.body)
+          const orgId = req.params.org?.toString() ?? ''
+          const auth = organizationIdMap[toShareId(orgId)]?.auth
+
+          if (!auth) {
+            res.status(500).send(`Organization ${orgId} does not exist`)
+            return
+          }
+
           const { shareId } = req.body as {
             shareId: ShareId
           }
@@ -205,8 +268,21 @@ export class LocalFirstAuthSyncServer {
        * event, which is handled by the NodeWSServerAdapter.
        */
       this.server.on('upgrade', (request, socket, head) => {
-        this.webSocketServer.handleUpgrade(request, socket, head, socket => {
-          this.webSocketServer.emit('connection', socket, request)
+        if (!request.url) {
+          return
+        }
+
+        const pathComponents = request.url.split('/') ?? []
+        const orgId = pathComponents[1]
+        const organization = organizationIdMap[toShareId(orgId)]
+
+        if (!organization) {
+          return
+        }
+
+        const { webSocketServer } = organization
+        webSocketServer.handleUpgrade(request, socket, head, socket => {
+          webSocketServer.emit('connection', socket, request)
         })
       })
     })

@@ -5,8 +5,8 @@ import { expect, it } from 'vitest'
 import { host, setup } from './helpers/setup.js'
 
 it('should start a server', async () => {
-  const { url } = await setup()
-  const response = await fetch(`http://${url}`)
+  const { baseUrl } = await setup()
+  const response = await fetch(`http://${baseUrl}`)
   const text = await response.text()
 
   // the server responds with an html page

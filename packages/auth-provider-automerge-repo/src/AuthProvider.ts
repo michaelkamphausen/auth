@@ -230,17 +230,17 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
     await this.addTeam(team)
 
     const registrations = this.#server.map(async server => {
-      const { origin, hostname } = buildServerUrl(server)
+      const { href, hostname } = buildServerUrl(server)
 
       // get the server's public keys
-      const response = await fetch(`${origin}/keys`)
+      const response = await fetch(`${href}/keys`)
       const keys = await response.json()
 
       // add the server's public keys to the team
       team.addServer({ host: hostname, keys })
 
       // register the team with the server
-      await fetch(`${origin}/teams`, {
+      await fetch(`${href}/teams`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -337,9 +337,9 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
    */
   public async registerPublicShare(shareId: ShareId) {
     const registrations = this.#server.map(async server => {
-      const { origin } = buildServerUrl(server)
+      const { href } = buildServerUrl(server)
 
-      await fetch(`${origin}/public-shares`, {
+      await fetch(`${href}/public-shares`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ shareId }),
