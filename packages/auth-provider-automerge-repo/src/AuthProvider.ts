@@ -683,14 +683,12 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
         })
       )
     } catch (error) {
-      if ((error as Error)?.message == "Unexpected end of MessagePack data") {
+      if ((error as Error)?.message === 'Unexpected end of MessagePack data') {
         const newStorageKey = STORAGE_KEY.slice()
-        newStorageKey[newStorageKey.length - 1] += "-" 
-          + (new Date()).toISOString().slice(0, 19).replace(/[:T-]/g, "") 
-          + ".corrupted"
+        newStorageKey[newStorageKey.length - 1] +=
+          '-' + new Date().toISOString().slice(0, 19).replaceAll(/[:T-]/g, '') + '.corrupted'
         await this.storage.save(newStorageKey, serializedState)
         await this.storage.remove(STORAGE_KEY)
-        return
       } else {
         throw error
       }
