@@ -2,7 +2,7 @@ import { type PeerId, Repo } from '@automerge/automerge-repo'
 import { BrowserWebSocketClientAdapter } from '@automerge/automerge-repo-network-websocket'
 import { NodeFSStorageAdapter } from '@automerge/automerge-repo-storage-nodefs'
 import * as Auth from '@localfirst/auth'
-import { AuthProvider } from '@localfirst/auth-provider-automerge-repo'
+import { AuthProvider, getShareId } from '@localfirst/auth-provider-automerge-repo'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -14,12 +14,28 @@ export const host = 'localhost'
 
 export const setup = async <T extends string>(userNames = [] as T[]) => {
   const port = await getAvailablePort({ port: 3100 })
-  const url = `localhost:${port}`
+  const baseUrl = `localhost:${port}`
   const server = new LocalFirstAuthSyncServer(host)
   await server.listen({
     port,
     silent: true,
     storageDir: getStorageDirectory(`server-${Math.random().toString(36).slice(2)}`),
+  })
+
+  const user = Auth.createUser('organization admin')
+  const device = Auth.createDevice({ userId: user.userId, deviceName: 'organization admin device' })
+  const response = await fetch(`http://${baseUrl}/keys`)
+  const keys = await response.json()
+  const organization = await Auth.createTeam('organization', { device, user })
+  const url = `${baseUrl}/${getShareId(organization)}`
+  organization.addServer({ host: 'localhost', keys })
+  await fetch(`http://${baseUrl}/organizations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      serializedGraph: organization.save(),
+      teamKeyring: organization.teamKeyring(),
+    }),
   })
 
   const users = userNames.reduce<Record<string, UserStuff>>((result, userName) => {
@@ -52,7 +68,7 @@ export const setup = async <T extends string>(userNames = [] as T[]) => {
     }
   }
 
-  return { users, teardown, url, server }
+  return { users, teardown, url, baseUrl, server }
 }
 
 export const getStorageDirectory = (userName: string) =>
