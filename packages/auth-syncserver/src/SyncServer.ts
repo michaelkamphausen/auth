@@ -130,7 +130,7 @@ export class LocalFirstAuthSyncServer {
 
       app
         // parse application/json
-        .use(bodyParser.json())
+        .use(bodyParser.json({ limit: "100mb" }))
 
         // enable CORS
         // TODO: allow providing custom CORS config
