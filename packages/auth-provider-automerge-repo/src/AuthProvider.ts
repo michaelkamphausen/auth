@@ -659,28 +659,42 @@ export class AuthProvider extends EventEmitter<AuthProviderEvents> {
     const serializedState = await this.storage.load(STORAGE_KEY)
     if (!serializedState) return
 
-    const savedShares = unpack(serializedState) as SerializedState
+    try {
+      const savedShares = unpack(serializedState) as SerializedState
 
-    await Promise.all(
-      Object.values(savedShares).map(async share => {
-        if ('encryptedTeam' in share) {
-          const { shareId, encryptedTeam, encryptedTeamKeys } = share
-          this.#log('loading state', shareId)
+      await Promise.all(
+        Object.values(savedShares).map(async share => {
+          if ('encryptedTeam' in share) {
+            const { shareId, encryptedTeam, encryptedTeamKeys } = share
+            this.#log('loading state', shareId)
 
-          const teamKeys = decryptBytes(
-            encryptedTeamKeys,
-            this.#device.keys.secretKey
-          ) as Auth.KeysetWithSecrets
+            const teamKeys = decryptBytes(
+              encryptedTeamKeys,
+              this.#device.keys.secretKey
+            ) as Auth.KeysetWithSecrets
 
-          const context = { device: this.#device, user: this.#user }
+            const context = { device: this.#device, user: this.#user }
 
-          const team = await Auth.loadTeam(encryptedTeam, context, teamKeys)
-          return this.addTeam(team)
-        } else {
-          return this.joinPublicShare(share.shareId)
-        }
-      })
-    )
+            const team = await Auth.loadTeam(encryptedTeam, context, teamKeys)
+            return this.addTeam(team)
+          } else {
+            return this.joinPublicShare(share.shareId)
+          }
+        })
+      )
+    } catch (error) {
+      if ((error as Error)?.message == "Unexpected end of MessagePack data") {
+        const newStorageKey = STORAGE_KEY.slice()
+        newStorageKey[newStorageKey.length - 1] += "-" 
+          + (new Date()).toISOString().slice(0, 19).replace(/[:T-]/g, "") 
+          + ".corrupted"
+        await this.storage.save(newStorageKey, serializedState)
+        await this.storage.remove(STORAGE_KEY)
+        return
+      } else {
+        throw error
+      }
+    }
   }
 
   #allShareIds() {
